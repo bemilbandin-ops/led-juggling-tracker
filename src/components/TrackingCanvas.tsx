@@ -759,6 +759,14 @@ export const TrackingCanvas = forwardRef<TrackingCanvasRef, TrackingCanvasProps>
         if (trackerSettings.motionFilter && !track.isMoving) continue;
         if (track.history.length < 2) continue;
 
+        // Skip drawing trails for stationary/vibrating objects (displacement filter)
+        const oldest = track.history[0];
+        const newest = track.history[track.history.length - 1];
+        const dx = newest.canvasX - oldest.canvasX;
+        const dy = newest.canvasY - oldest.canvasY;
+        const displacement = Math.sqrt(dx * dx + dy * dy);
+        if (displacement < 15) continue;
+
         const colorHex = getEffectColor(track, effectSettings);
 
         if (effectSettings.trailType === 'neon') {

@@ -41,13 +41,13 @@ export function ControlPanel({
       description: 'Bright glowing traces with golden diamond bursts. Great for fast juggling.',
       tracker: {
         mode: 'brightness',
-        minBrightness: 160,
+        minBrightness: 210,
         motionFilter: true,
         motionSensitivity: 5
       },
       effects: {
         trailType: 'neon',
-        trailLength: 16,
+        trailLength: 30,
         trailWidth: 8,
         glowType: 'pulse',
         glowSize: 45,
@@ -62,13 +62,13 @@ export function ControlPanel({
       description: 'Slow-fading translucent ribbon trails. Soft, mystical purple aesthetic.',
       tracker: {
         mode: 'brightness',
-        minBrightness: 140,
+        minBrightness: 200,
         motionFilter: true,
         motionSensitivity: 3
       },
       effects: {
         trailType: 'ribbon',
-        trailLength: 26,
+        trailLength: 45,
         trailWidth: 12,
         glowType: 'halo',
         glowSize: 30,
@@ -84,13 +84,13 @@ export function ControlPanel({
       description: 'Rainbow-colored trails with target lock HUDs and spinning velocity overlays.',
       tracker: {
         mode: 'brightness',
-        minBrightness: 170,
+        minBrightness: 215,
         motionFilter: true,
         motionSensitivity: 6
       },
       effects: {
         trailType: 'rainbow',
-        trailLength: 18,
+        trailLength: 35,
         trailWidth: 6,
         glowType: 'spark',
         glowSize: 50,
@@ -107,14 +107,14 @@ export function ControlPanel({
         mode: 'color',
         targetColor: { r: 0, g: 255, b: 0, h: 120, s: 90, v: 85 },
         colorTolerance: 20,
-        minBrightness: 110,
+        minBrightness: 130,
         minSaturation: 40,
         motionFilter: true,
         motionSensitivity: 4
       },
       effects: {
         trailType: 'neon',
-        trailLength: 14,
+        trailLength: 24,
         trailWidth: 8,
         glowType: 'pulse',
         glowSize: 40,
@@ -129,7 +129,7 @@ export function ControlPanel({
       description: 'Fun floating bubbles that inflate and drift upwards as the clubs move.',
       tracker: {
         mode: 'brightness',
-        minBrightness: 150,
+        minBrightness: 200,
         motionFilter: true,
         motionSensitivity: 4
       },
@@ -422,7 +422,7 @@ export function ControlPanel({
                     <input
                       type="range"
                       min="5"
-                      max="40"
+                      max="120"
                       value={effectSettings.trailLength}
                       onChange={(e) => updateEffects('trailLength', parseInt(e.target.value))}
                       className="w-full accent-cyan-400 h-1 bg-neutral-850 rounded-none appearance-none cursor-pointer"

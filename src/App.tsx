@@ -21,7 +21,7 @@ export default function App() {
     mode: 'brightness',
     targetColor: { r: 239, g: 68, b: 68, h: 0, s: 95, v: 90 }, // Default Red
     colorTolerance: 18,
-    minBrightness: 160,
+    minBrightness: 220,
     minSaturation: 35,
     motionFilter: true,
     motionSensitivity: 4.5,
@@ -31,7 +31,7 @@ export default function App() {
   // Visual effects settings with highly artistic default configurations
   const [effectSettings, setEffectSettings] = useState<EffectSettings>({
     trailType: 'neon',
-    trailLength: 16,
+    trailLength: 30,
     trailWidth: 8,
     glowType: 'pulse',
     glowSize: 45,
