@@ -37,6 +37,17 @@ export const TrackingCanvas = forwardRef<TrackingCanvasRef, TrackingCanvasProps>
   const [isCameraActive, setIsCameraActive] = useState<boolean>(false);
   const [retryCount, setRetryCount] = useState<number>(0);
 
+  const trackerSettingsRef = useRef(trackerSettings);
+  const effectSettingsRef = useRef(effectSettings);
+
+  useEffect(() => {
+    trackerSettingsRef.current = trackerSettings;
+  }, [trackerSettings]);
+
+  useEffect(() => {
+    effectSettingsRef.current = effectSettings;
+  }, [effectSettings]);
+
   // Core tracking states
   const trackedObjectsRef = useRef<TrackedObject[]>([]);
   const particlesRef = useRef<Particle[]>([]);
@@ -168,7 +179,7 @@ export const TrackingCanvas = forwardRef<TrackingCanvasRef, TrackingCanvasProps>
   // Handle video resize and starts processing
   useEffect(() => {
     const video = videoRef.current;
-    if (!video) return;
+    if (!video || !isCameraActive) return;
 
     const handlePlay = () => {
       if (animationFrameIdRef.current) {
@@ -177,6 +188,11 @@ export const TrackingCanvas = forwardRef<TrackingCanvasRef, TrackingCanvasProps>
       animationFrameIdRef.current = requestAnimationFrame(processingLoop);
     };
 
+    // If video is already playing, start loop immediately
+    if (!video.paused && !video.ended) {
+      handlePlay();
+    }
+
     video.addEventListener('playing', handlePlay);
     return () => {
       video.removeEventListener('playing', handlePlay);
@@ -184,7 +200,7 @@ export const TrackingCanvas = forwardRef<TrackingCanvasRef, TrackingCanvasProps>
         cancelAnimationFrame(animationFrameIdRef.current);
       }
     };
-  }, [trackerSettings, effectSettings]);
+  }, [isCameraActive]);
 
   // Pixel picker / Color Sampler on click
   const handleCanvasClick = (event: React.MouseEvent<HTMLCanvasElement>) => {
@@ -225,6 +241,9 @@ export const TrackingCanvas = forwardRef<TrackingCanvasRef, TrackingCanvasProps>
 
   // Main Tracking & Rendering Loop
   const processingLoop = () => {
+    const trackerSettings = trackerSettingsRef.current;
+    const effectSettings = effectSettingsRef.current;
+
     const video = videoRef.current;
     const canvas = displayCanvasRef.current;
     const offscreen = offscreenCanvasRef.current;
@@ -488,6 +507,10 @@ export const TrackingCanvas = forwardRef<TrackingCanvasRef, TrackingCanvasProps>
     // Decrement life and decay velocities for existing tracks
     for (const track of activeTracks) {
       track.life--;
+      // If track not matched in this frame (life < maxLife) and has short history, kill it immediately to prevent noise lines
+      if (track.life < track.maxLife && track.history.length < 4) {
+        track.life = 0;
+      }
       // Dampen velocity when coasting
       track.vx *= 0.85;
       track.vy *= 0.85;
