@@ -13,7 +13,7 @@ interface TrackingCanvasProps {
     tempo: number; // throws per minute
     peakSpeed: number;
   }) => void;
-  onCameraListLoaded: (cameras: MediaDeviceInfo[]) => void;
+  onCameraListLoaded: (cameras: MediaDeviceInfo[], activeDeviceId?: string) => void;
   onSampleColor: (color: { r: number; g: number; b: number; h: number; s: number; v: number }) => void;
 }
 
@@ -67,35 +67,36 @@ export const TrackingCanvas = forwardRef<TrackingCanvasRef, TrackingCanvasProps>
     resetStats
   }));
 
-  // Enumerate cameras
+  const activeStreamRef = useRef<MediaStream | null>(null);
+  const activeDeviceIdRef = useRef<string | null>(null);
+
+  // Clean up stream on unmount
   useEffect(() => {
-    async function getCameras() {
-      if (!navigator.mediaDevices) {
-        console.error("Camera access requires secure context");
+    return () => {
+      if (activeStreamRef.current) {
+        activeStreamRef.current.getTracks().forEach(track => track.stop());
+        activeStreamRef.current = null;
+      }
+    };
+  }, []);
+
+  // Start Camera Stream & Enumerate Devices
+  useEffect(() => {
+    async function startStream() {
+      // If we are already streaming this specific camera, do nothing
+      if (isCameraActive && selectedCameraId && selectedCameraId === activeDeviceIdRef.current && activeStreamRef.current) {
         return;
       }
-      try {
-        // Request permissions first to get complete labels
-        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-        stream.getTracks().forEach(track => track.stop());
 
-        const devices = await navigator.mediaDevices.enumerateDevices();
-        const videoDevices = devices.filter(device => device.kind === 'videoinput');
-        onCameraListLoaded(videoDevices);
-      } catch (err: any) {
-        console.error("Failed to list cameras:", err);
-      }
-    }
-    getCameras();
-  }, [onCameraListLoaded, retryCount]);
-
-  // Start Camera Stream
-  useEffect(() => {
-    let activeStream: MediaStream | null = null;
-
-    async function startStream() {
       setError(null);
       setIsCameraActive(false);
+
+      // Stop previous stream
+      if (activeStreamRef.current) {
+        activeStreamRef.current.getTracks().forEach(track => track.stop());
+        activeStreamRef.current = null;
+      }
+      activeDeviceIdRef.current = null;
 
       if (animationFrameIdRef.current) {
         cancelAnimationFrame(animationFrameIdRef.current);
@@ -117,28 +118,52 @@ export const TrackingCanvas = forwardRef<TrackingCanvasRef, TrackingCanvasProps>
       };
 
       try {
-        const stream = await navigator.mediaDevices.getUserMedia(constraints);
-        activeStream = stream;
+        let stream: MediaStream;
+        try {
+          stream = await navigator.mediaDevices.getUserMedia(constraints);
+        } catch (initialErr) {
+          console.warn("Initial camera constraints failed, trying fallback:", initialErr);
+          if (selectedCameraId) {
+            try {
+              stream = await navigator.mediaDevices.getUserMedia({
+                video: { deviceId: { exact: selectedCameraId } }
+              });
+            } catch (fallbackErr) {
+              console.warn("Fallback to deviceId-only failed, trying generic video constraints:", fallbackErr);
+              stream = await navigator.mediaDevices.getUserMedia({ video: true });
+            }
+          } else {
+            stream = await navigator.mediaDevices.getUserMedia({ video: true });
+          }
+        }
+        
+        activeStreamRef.current = stream;
+        const actualTrack = stream.getVideoTracks()[0];
+        const actualDeviceId = actualTrack?.getSettings().deviceId || null;
+        activeDeviceIdRef.current = actualDeviceId;
 
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
           videoRef.current.play();
           setIsCameraActive(true);
         }
+
+        // List available cameras after successfully starting current stream (safe permission delegation)
+        try {
+          const devices = await navigator.mediaDevices.enumerateDevices();
+          const videoDevices = devices.filter(device => device.kind === 'videoinput');
+          onCameraListLoaded(videoDevices, actualDeviceId || undefined);
+        } catch (enumErr) {
+          console.error("Failed to enumerate devices after stream start:", enumErr);
+        }
       } catch (err: any) {
-        console.error("Camera access failed:", err);
+        console.error("Camera access failed after all fallbacks:", err);
         setError(`Camera error: ${err.message || "Could not access device. Please check permissions."}`);
       }
     }
 
     startStream();
-
-    return () => {
-      if (activeStream) {
-        activeStream.getTracks().forEach(track => track.stop());
-      }
-    };
-  }, [selectedCameraId, retryCount]);
+  }, [selectedCameraId, retryCount, onCameraListLoaded]);
 
   // Handle video resize and starts processing
   useEffect(() => {

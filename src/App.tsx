@@ -58,7 +58,7 @@ export default function App() {
   const trackerRef = useRef<TrackingCanvasRef>(null);
 
   // Trigger camera list load
-  const handleCameraListLoaded = useCallback((camerasList: MediaDeviceInfo[]) => {
+  const handleCameraListLoaded = useCallback((camerasList: MediaDeviceInfo[], activeDeviceId?: string) => {
     setCameras(camerasList);
     // Auto-select back camera if on Android, or default to first camera
     if (camerasList.length > 0 && !selectedCameraId) {
@@ -67,7 +67,7 @@ export default function App() {
         cam.label.toLowerCase().includes('rear') ||
         cam.label.toLowerCase().includes('environment')
       );
-      setSelectedCameraId(backCam ? backCam.deviceId : camerasList[0].deviceId);
+      setSelectedCameraId(backCam ? backCam.deviceId : (activeDeviceId || camerasList[0].deviceId));
     }
   }, [selectedCameraId]);
 
