@@ -35,6 +35,7 @@ export const TrackingCanvas = forwardRef<TrackingCanvasRef, TrackingCanvasProps>
 
   const [error, setError] = useState<string | null>(null);
   const [isCameraActive, setIsCameraActive] = useState<boolean>(false);
+  const [retryCount, setRetryCount] = useState<number>(0);
 
   // Core tracking states
   const trackedObjectsRef = useRef<TrackedObject[]>([]);
@@ -69,6 +70,10 @@ export const TrackingCanvas = forwardRef<TrackingCanvasRef, TrackingCanvasProps>
   // Enumerate cameras
   useEffect(() => {
     async function getCameras() {
+      if (!navigator.mediaDevices) {
+        console.error("Camera access requires secure context");
+        return;
+      }
       try {
         // Request permissions first to get complete labels
         const stream = await navigator.mediaDevices.getUserMedia({ video: true });
@@ -82,7 +87,7 @@ export const TrackingCanvas = forwardRef<TrackingCanvasRef, TrackingCanvasProps>
       }
     }
     getCameras();
-  }, [onCameraListLoaded]);
+  }, [onCameraListLoaded, retryCount]);
 
   // Start Camera Stream
   useEffect(() => {
@@ -94,6 +99,11 @@ export const TrackingCanvas = forwardRef<TrackingCanvasRef, TrackingCanvasProps>
 
       if (animationFrameIdRef.current) {
         cancelAnimationFrame(animationFrameIdRef.current);
+      }
+
+      if (!navigator.mediaDevices) {
+        setError("Camera access requires a secure context (HTTPS) or localhost. Please check your URL.");
+        return;
       }
 
       const constraints: MediaStreamConstraints = {
@@ -128,7 +138,7 @@ export const TrackingCanvas = forwardRef<TrackingCanvasRef, TrackingCanvasProps>
         activeStream.getTracks().forEach(track => track.stop());
       }
     };
-  }, [selectedCameraId]);
+  }, [selectedCameraId, retryCount]);
 
   // Handle video resize and starts processing
   useEffect(() => {
@@ -1000,9 +1010,7 @@ export const TrackingCanvas = forwardRef<TrackingCanvasRef, TrackingCanvasProps>
           <button
             id="retry_camera_btn"
             onClick={() => {
-              // Force reload page / toggle state
-              const video = videoRef.current;
-              if (video) video.load();
+              setRetryCount(prev => prev + 1);
             }}
             className="px-5 py-2.5 bg-red-500/10 hover:bg-red-500/20 active:bg-red-950/40 border border-red-500/30 hover:border-red-500/50 text-[10px] font-mono font-bold text-red-400 uppercase tracking-widest rounded-none transition-all cursor-pointer"
           >

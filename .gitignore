@@ -6,3 +6,8 @@ coverage/
 *.log
 .env*
 !.env.example
+
+# Local agent skills
+.agents/skills/
+.kilocode/skills/
+.qwen/skills/
