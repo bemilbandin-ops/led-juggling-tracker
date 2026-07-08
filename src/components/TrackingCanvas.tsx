@@ -545,7 +545,7 @@ export const TrackingCanvas = forwardRef<TrackingCanvasRef, TrackingCanvasProps>
         const blob = detectedBlobs[bestBlobIdx];
 
         // Smooth coordinate updates using Exponential Moving Average to prevent noise jitter
-        const smoothingFactor = 0.45; // 0 is stiff tracking, 1 is teleport
+        const smoothingFactor = 0.22; // 0 is stiff tracking, 1 is teleport
         const prevCanvasX = track.canvasX;
         const prevCanvasY = track.canvasY;
 
@@ -770,77 +770,112 @@ export const TrackingCanvas = forwardRef<TrackingCanvasRef, TrackingCanvasProps>
         const colorHex = getEffectColor(track, effectSettings);
 
         if (effectSettings.trailType === 'neon') {
-          // Draw a tapered, fading neon comet trail
+          ctx.save();
+          ctx.lineCap = 'round';
+          ctx.lineJoin = 'round';
+
           const len = track.history.length;
+          
+          // Pass 1: Wide background soft glow (drawn as a single smooth path)
+          ctx.beginPath();
+          ctx.moveTo(track.history[0].canvasX, track.history[0].canvasY);
+          for (let i = 1; i < len; i++) {
+            ctx.lineTo(track.history[i].canvasX, track.history[i].canvasY);
+          }
+          ctx.strokeStyle = colorHex;
+          ctx.lineWidth = effectSettings.trailWidth * 4.5;
+          ctx.globalAlpha = 0.04;
+          ctx.stroke();
+
+          // Pass 2: Medium background glow (drawn as a single smooth path)
+          ctx.beginPath();
+          ctx.moveTo(track.history[0].canvasX, track.history[0].canvasY);
+          for (let i = 1; i < len; i++) {
+            ctx.lineTo(track.history[i].canvasX, track.history[i].canvasY);
+          }
+          ctx.strokeStyle = colorHex;
+          ctx.lineWidth = effectSettings.trailWidth * 2.2;
+          ctx.globalAlpha = 0.12;
+          ctx.stroke();
+
+          // Pass 3 & 4: Tapered fading inner core & white center (segment-by-segment)
           for (let i = 0; i < len - 1; i++) {
             const p1 = track.history[i];
             const p2 = track.history[i + 1];
-            const ratio = (i + 1) / len; // 0 (oldest/tail) to 1 (newest/head)
+            const ratio = (i + 1) / len;
 
-            ctx.save();
-            ctx.lineCap = 'round';
-            ctx.lineJoin = 'round';
-            ctx.globalAlpha = ratio; // older segments are more transparent
-
-            // Pass 1: Tapered outer wide glow
-            ctx.shadowColor = colorHex;
-            ctx.shadowBlur = 14 * ratio;
+            // Inner core glow
             ctx.strokeStyle = colorHex;
+            ctx.globalAlpha = 0.5 * ratio;
+            ctx.lineWidth = effectSettings.trailWidth * 1.3 * ratio;
+            ctx.beginPath();
+            ctx.moveTo(p1.canvasX, p1.canvasY);
+            ctx.lineTo(p2.canvasX, p2.canvasY);
+            ctx.stroke();
+
+            // White center core
+            ctx.strokeStyle = '#ffffff';
+            ctx.globalAlpha = 0.9 * ratio;
+            ctx.lineWidth = Math.max(1.0, effectSettings.trailWidth * 0.4 * ratio);
+            ctx.beginPath();
+            ctx.moveTo(p1.canvasX, p1.canvasY);
+            ctx.lineTo(p2.canvasX, p2.canvasY);
+            ctx.stroke();
+          }
+          
+          ctx.restore();
+
+        } else if (effectSettings.trailType === 'ribbon') {
+          // Soft glowing aura trail (broad pure light ribbon)
+          ctx.save();
+          ctx.lineCap = 'round';
+          ctx.lineJoin = 'round';
+
+          const len = track.history.length;
+
+          // Wide background ribbon
+          ctx.beginPath();
+          ctx.moveTo(track.history[0].canvasX, track.history[0].canvasY);
+          for (let i = 1; i < len; i++) {
+            ctx.lineTo(track.history[i].canvasX, track.history[i].canvasY);
+          }
+          ctx.strokeStyle = colorHex;
+          ctx.lineWidth = effectSettings.trailWidth * 4.0;
+          ctx.globalAlpha = 0.06;
+          ctx.stroke();
+
+          // Tapered fading inner ribbon
+          for (let i = 0; i < len - 1; i++) {
+            const p1 = track.history[i];
+            const p2 = track.history[i + 1];
+            const ratio = (i + 1) / len;
+
+            ctx.strokeStyle = colorHex;
+            ctx.globalAlpha = 0.65 * ratio;
             ctx.lineWidth = effectSettings.trailWidth * 2.2 * ratio;
             
             ctx.beginPath();
             ctx.moveTo(p1.canvasX, p1.canvasY);
             ctx.lineTo(p2.canvasX, p2.canvasY);
             ctx.stroke();
-
-            // Pass 2: Tapered high intensity core
-            ctx.shadowBlur = 0;
-            ctx.strokeStyle = '#ffffff';
-            ctx.lineWidth = Math.max(1.5, effectSettings.trailWidth * 0.45 * ratio);
-            
-            ctx.beginPath();
-            ctx.moveTo(p1.canvasX, p1.canvasY);
-            ctx.lineTo(p2.canvasX, p2.canvasY);
-            ctx.stroke();
-
-            ctx.restore();
           }
 
-        } else if (effectSettings.trailType === 'ribbon') {
-          // Soft glowing aura trail (pure light ribbon, no white core)
-          const len = track.history.length;
-          for (let i = 0; i < len - 1; i++) {
-            const p1 = track.history[i];
-            const p2 = track.history[i + 1];
-            const ratio = (i + 1) / len;
-
-            ctx.save();
-            ctx.lineCap = 'round';
-            ctx.lineJoin = 'round';
-            ctx.globalAlpha = 0.7 * ratio;
-
-            ctx.shadowColor = colorHex;
-            ctx.shadowBlur = 12 * ratio;
-            ctx.strokeStyle = colorHex;
-            ctx.lineWidth = effectSettings.trailWidth * 2.8 * ratio;
-
-            ctx.beginPath();
-            ctx.moveTo(p1.canvasX, p1.canvasY);
-            ctx.lineTo(p2.canvasX, p2.canvasY);
-            ctx.stroke();
-
-            ctx.restore();
-          }
+          ctx.restore();
 
         } else if (effectSettings.trailType === 'rainbow') {
           // Tapered, fading color-shifting neon trail
+          ctx.save();
+          ctx.lineCap = 'round';
+          ctx.lineJoin = 'round';
+
           const len = track.history.length;
+
+          // Draw the fading color-shifting neon trail segment by segment
           for (let i = 0; i < len - 1; i++) {
             const p1 = track.history[i];
             const p2 = track.history[i + 1];
             const ratio = (i + 1) / len;
-            
-            // Cycle through hues along path length
+
             const segmentHue = (track.pulseTimer * 1.5 + ratio * 360) % 360;
             const segmentColor = rgbToHex(
               hsvToRgb(segmentHue, 95, 95).r,
@@ -848,34 +883,34 @@ export const TrackingCanvas = forwardRef<TrackingCanvasRef, TrackingCanvasProps>
               hsvToRgb(segmentHue, 95, 95).b
             );
 
-            ctx.save();
-            ctx.lineCap = 'round';
-            ctx.lineJoin = 'round';
-            ctx.globalAlpha = ratio;
-
-            // Pass 1: Outer glow
-            ctx.shadowColor = segmentColor;
-            ctx.shadowBlur = 12 * ratio;
+            // Wide soft glow segment
             ctx.strokeStyle = segmentColor;
-            ctx.lineWidth = effectSettings.trailWidth * 2.2 * ratio;
-            
+            ctx.globalAlpha = 0.08 * ratio;
+            ctx.lineWidth = effectSettings.trailWidth * 3.5 * ratio;
             ctx.beginPath();
             ctx.moveTo(p1.canvasX, p1.canvasY);
             ctx.lineTo(p2.canvasX, p2.canvasY);
             ctx.stroke();
 
-            // Pass 2: High intensity core
-            ctx.shadowBlur = 0;
+            // Inner core glow segment
+            ctx.globalAlpha = 0.5 * ratio;
+            ctx.lineWidth = effectSettings.trailWidth * 1.3 * ratio;
+            ctx.beginPath();
+            ctx.moveTo(p1.canvasX, p1.canvasY);
+            ctx.lineTo(p2.canvasX, p2.canvasY);
+            ctx.stroke();
+
+            // White center core
             ctx.strokeStyle = '#ffffff';
-            ctx.lineWidth = Math.max(1.5, effectSettings.trailWidth * 0.45 * ratio);
-
+            ctx.globalAlpha = 0.9 * ratio;
+            ctx.lineWidth = Math.max(1.0, effectSettings.trailWidth * 0.4 * ratio);
             ctx.beginPath();
             ctx.moveTo(p1.canvasX, p1.canvasY);
             ctx.lineTo(p2.canvasX, p2.canvasY);
             ctx.stroke();
-
-            ctx.restore();
           }
+
+          ctx.restore();
         }
       }
     }
