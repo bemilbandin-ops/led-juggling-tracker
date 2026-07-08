@@ -1,6 +1,7 @@
-import React, { useEffect, useRef, useState, useImperativeHandle, forwardRef } from 'react';
+import React, { useEffect, useRef, useState, useImperativeHandle, forwardRef, useCallback } from 'react';
 import { TrackerSettings, EffectSettings, TrackedObject, Particle } from '../types';
 import { rgbToHsv, hsvToRgb, rgbToHex } from '../utils/color';
+import { Maximize, Minimize, Video } from 'lucide-react';
 
 interface TrackingCanvasProps {
   trackerSettings: TrackerSettings;
@@ -32,10 +33,16 @@ export const TrackingCanvas = forwardRef<TrackingCanvasRef, TrackingCanvasProps>
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const displayCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const offscreenCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
 
   const [error, setError] = useState<string | null>(null);
   const [isCameraActive, setIsCameraActive] = useState<boolean>(false);
   const [retryCount, setRetryCount] = useState<number>(0);
+  const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
+  const [isRecording, setIsRecording] = useState<boolean>(false);
+
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const recordedChunksRef = useRef<BlobPart[]>([]);
 
   const trackerSettingsRef = useRef(trackerSettings);
   const effectSettingsRef = useRef(effectSettings);
@@ -1066,8 +1073,109 @@ export const TrackingCanvas = forwardRef<TrackingCanvasRef, TrackingCanvasProps>
     } : { r: 59, g: 130, b: 246 }; // Tailwind blue default
   };
 
+  const toggleFullscreen = useCallback(async () => {
+    if (!containerRef.current) return;
+
+    try {
+      if (!document.fullscreenElement) {
+        await containerRef.current.requestFullscreen();
+      } else {
+        await document.exitFullscreen();
+      }
+    } catch (err) {
+      console.error("Error attempting to toggle fullscreen:", err);
+    }
+  }, []);
+
+  const startRecording = useCallback(() => {
+    if (!displayCanvasRef.current) return;
+
+    try {
+      const stream = displayCanvasRef.current.captureStream(60); // 60 FPS for smooth juggling capture
+      // Try to find the best supported format
+      const options = { mimeType: 'video/webm;codecs=vp9' };
+      let recorder: MediaRecorder;
+      if (MediaRecorder.isTypeSupported(options.mimeType)) {
+        recorder = new MediaRecorder(stream, options);
+      } else if (MediaRecorder.isTypeSupported('video/webm;codecs=vp8')) {
+        recorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp8' });
+      } else if (MediaRecorder.isTypeSupported('video/webm')) {
+        recorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
+      } else {
+        recorder = new MediaRecorder(stream); // fallback
+      }
+
+      mediaRecorderRef.current = recorder;
+      recordedChunksRef.current = [];
+
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          recordedChunksRef.current.push(event.data);
+        }
+      };
+
+      recorder.onstop = () => {
+        const blob = new Blob(recordedChunksRef.current, {
+          type: recorder.mimeType || 'video/webm'
+        });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        document.body.appendChild(a);
+        a.style.display = 'none';
+        a.href = url;
+        a.download = `lumen-tracker-session-${new Date().getTime()}.webm`;
+        a.click();
+        window.URL.revokeObjectURL(url);
+        a.remove();
+      };
+
+      recorder.start();
+      setIsRecording(true);
+    } catch (err) {
+      console.error("Error starting recording:", err);
+    }
+  }, []);
+
+  const stopRecording = useCallback(() => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.stop();
+      setIsRecording(false);
+    }
+  }, []);
+
+  const toggleRecording = useCallback(() => {
+    if (isRecording) {
+      stopRecording();
+    } else {
+      startRecording();
+    }
+  }, [isRecording, startRecording, stopRecording]);
+
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+    };
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Don't trigger if user is typing in an input
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+        return;
+      }
+      if (e.key.toLowerCase() === 'r') {
+        toggleRecording();
+      }
+    };
+
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [toggleRecording]);
+
   return (
-    <div id="tracking_viewport_container" className="relative w-full aspect-video md:aspect-[4/3] lg:aspect-video rounded-none overflow-hidden bg-[#0C0C0E] border border-white/10 shadow-2xl group">
+    <div id="tracking_viewport_container" ref={containerRef} className="relative w-full aspect-video md:aspect-[4/3] lg:aspect-video rounded-none overflow-hidden bg-[#0C0C0E] border border-white/10 shadow-2xl group">
       {/* Underlying raw streaming video (hidden from display, used as tracker input buffer) */}
       <video
         id="camera_input_stream"
@@ -1127,6 +1235,35 @@ export const TrackingCanvas = forwardRef<TrackingCanvasRef, TrackingCanvasProps>
             className="px-5 py-2.5 bg-red-500/10 hover:bg-red-500/20 active:bg-red-950/40 border border-red-500/30 hover:border-red-500/50 text-[10px] font-mono font-bold text-red-400 uppercase tracking-widest rounded-none transition-all cursor-pointer"
           >
             Retry Stream Link
+          </button>
+        </div>
+      )}
+      {/* Overlay Actions */}
+      {isCameraActive && (
+        <div className="absolute top-4 right-4 flex items-center space-x-2 opacity-0 group-hover:opacity-100 transition-opacity duration-300 z-50">
+          <button
+            onClick={toggleRecording}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-[#0C0C0E]/95 border border-white/10 hover:border-white/30 text-xs font-mono font-bold text-neutral-300 hover:text-white rounded-none shadow-md transition-all active:scale-95 cursor-pointer"
+            title="Record (R)"
+          >
+            {isRecording ? (
+              <>
+                <div className="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse" />
+                <span className="text-red-400">REC</span>
+              </>
+            ) : (
+              <>
+                <Video className="w-3.5 h-3.5" />
+                <span>REC</span>
+              </>
+            )}
+          </button>
+          <button
+            onClick={toggleFullscreen}
+            className="flex items-center justify-center w-8 h-8 bg-[#0C0C0E]/95 border border-white/10 hover:border-white/30 text-neutral-300 hover:text-white rounded-none shadow-md transition-all active:scale-95 cursor-pointer"
+            title={isFullscreen ? "Exit Fullscreen" : "Fullscreen"}
+          >
+            {isFullscreen ? <Minimize className="w-4 h-4" /> : <Maximize className="w-4 h-4" />}
           </button>
         </div>
       )}
